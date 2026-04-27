@@ -7,6 +7,6 @@ __pycache__/
 venv/
 
 artifacts/runs/
+configs/artifacts/
 configs/local_*.json
 configs/*_private.json
-

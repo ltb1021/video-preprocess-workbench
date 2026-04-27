@@ -194,6 +194,7 @@ artifacts/runs/run_YYYYMMDD_HHMMSS/
 
 - 예제 notebook: [notebooks/video_preprocess_demo.ipynb](/share_ssd/ltb/Users/ltb/git_repos/video-preprocess-workbench/notebooks/video_preprocess_demo.ipynb)
 - notebook 에서는 Python 함수로 직접 `inspect_inputs`, `save_preview`, `run_batch` 를 호출할 수 있다.
+- config 세부 항목 설명은 [docs/config_guide_ko.md](/share_ssd/ltb/Users/ltb/git_repos/video-preprocess-workbench/docs/config_guide_ko.md) 를 참고하면 된다.
 
 ## Python에서 직접 사용
 
