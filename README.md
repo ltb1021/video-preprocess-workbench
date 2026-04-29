@@ -1,7 +1,7 @@
 # video-preprocess-workbench
 
 여러 PC에서 재사용할 수 있게 만든 범용 영상 전처리 도구다.  
-폴더 또는 단일 영상 경로를 받아서 `scan depth` 제어, 메타데이터 inventory 생성, preview 이미지 저장, 배치 resize/FPS 변환/ROI blur 처리, 성공/실패 CSV 기록까지 한 번에 수행한다.
+폴더 또는 단일 영상 경로를 받아서 `scan depth` 제어, 메타데이터 inventory 생성, preview 이미지 저장, 배치 resize/FPS 변환/ROI blur 처리, 원본 FPS 유지 구간 편집, 성공/실패 CSV 기록까지 한 번에 수행한다.
 
 ## 현재 상황
 
@@ -19,6 +19,7 @@
 3. `preview` 로 대표 프레임에 grid/ROI overlay 를 저장해 설정이 맞는지 본다.
 4. `run --dry-run` 으로 실제 인코딩 전 보고서만 생성해 본다.
 5. 문제가 없으면 `run` 으로 전체 배치 처리한다.
+6. 구간만 잘라야 하면 `segment` 로 원본 FPS 유지 편집을 수행한다.
 
 ## 프로젝트 구조
 
@@ -29,6 +30,7 @@ video-preprocess-workbench/
 ├── configs/
 │   └── example_batch.json
 ├── notebooks/
+│   ├── video_segment_demo.ipynb
 │   └── video_preprocess_demo.ipynb
 ├── pyproject.toml
 ├── requirements.txt
@@ -117,6 +119,16 @@ python video_preprocess_cli.py run ./configs/local_batch.json --dry-run
 python video_preprocess_cli.py run ./configs/local_batch.json
 ```
 
+### 7. 원본 FPS 유지 구간 편집
+
+```bash
+python video_preprocess_cli.py segment ./configs/example_segment.json
+```
+
+예:
+- `4분 50초 ~ 5분 50초` 는 `290초 ~ 350초`
+- 출력 파일명 예시: `CAM1__segment_290-350s.mp4`
+
 ## CLI override 예시
 
 config 를 매번 고치지 않고 일회성으로 경로만 바꿀 수 있다.
@@ -173,6 +185,12 @@ python video_preprocess_cli.py inspect ./configs/example_batch.json \
 - `boxes`: ROI 목록
 - `blur_kernel`: Gaussian blur kernel 크기
 
+### segment
+
+- `start_sec`: 구간 시작 초
+- `end_sec`: 구간 종료 초
+- `preserve_source_fps`: `true` 면 파일별 원본 FPS 유지
+
 ## 출력 구조
 
 실행 후 기본적으로 아래 구조가 생성된다.
@@ -181,18 +199,23 @@ python video_preprocess_cli.py inspect ./configs/example_batch.json \
 artifacts/runs/run_YYYYMMDD_HHMMSS/
 ├── preview/
 ├── processed/
+├── segments/
 └── reports/
     ├── inventory.csv
     ├── inventory_summary.json
     ├── preview_info.json
     ├── success.csv
     ├── failed.csv
-    └── run_summary.json
+    ├── run_summary.json
+    ├── segment_success.csv
+    ├── segment_failed.csv
+    └── segment_summary.json
 ```
 
 ## Notebook 사용
 
 - 예제 notebook: [notebooks/video_preprocess_demo.ipynb](/share_ssd/ltb/Users/ltb/git_repos/video-preprocess-workbench/notebooks/video_preprocess_demo.ipynb)
+- 구간 편집 전용 notebook: [notebooks/video_segment_demo.ipynb](/share_ssd/ltb/Users/ltb/git_repos/video-preprocess-workbench/notebooks/video_segment_demo.ipynb)
 - notebook 에서는 Python 함수로 직접 `inspect_inputs`, `save_preview`, `run_batch` 를 호출할 수 있다.
 - config 세부 항목 설명은 [docs/config_guide_ko.md](/share_ssd/ltb/Users/ltb/git_repos/video-preprocess-workbench/docs/config_guide_ko.md) 를 참고하면 된다.
 
@@ -236,3 +259,4 @@ print(summary)
 - 이 repo는 raw 영상 자체를 포함하지 않는다.
 - 개인 입력 영상 폴더는 `configs/local_*.json` 같은 개인 config 에서만 참조하는 것을 권장한다.
 - `fit_pad` 는 비율 유지에 유리하지만, padding 이 들어가므로 ROI를 pixel 기준으로 쓸 때는 preview 확인이 필요하다.
+- `segment` 는 현재 OpenCV `VideoWriter` 기반이라 re-encode 방식이다. 그래도 출력 FPS는 기본적으로 각 원본 파일 FPS를 유지한다.

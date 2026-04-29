@@ -1,6 +1,6 @@
 # Config Guide (Korean)
 
-이 문서는 `configs/example_batch.json` 의 각 항목을 실무 관점에서 설명한다.
+이 문서는 `configs/example_batch.json`, `configs/example_segment.json` 의 각 항목을 실무 관점에서 설명한다.
 
 ## 1. input
 
@@ -160,6 +160,31 @@
 추천:
 - 실무에서는 보통 `continue_on_error = true`
 
+## 7. segment
+
+```json
+"segment": {
+  "start_sec": 290.0,
+  "end_sec": 350.0,
+  "preserve_source_fps": true
+}
+```
+
+- `start_sec`
+  - 구간 시작 시각(초)
+- `end_sec`
+  - 구간 종료 시각(초)
+- `preserve_source_fps`
+  - `true` 면 파일별 원본 FPS 그대로 저장
+
+설명:
+- `4분 50초 ~ 5분 50초` 를 잘라내고 싶으면 `290.0 ~ 350.0` 으로 넣으면 된다.
+- 파일마다 FPS가 조금 달라도, `preserve_source_fps = true` 이면 각 파일 고유 FPS를 유지한다.
+
+추천:
+- CCTV 원본 비교용 편집이면 `preserve_source_fps = true` 유지
+- `scan_depth = 0` 으로 폴더 바로 아래 3개 파일만 먼저 처리하는 것을 추천
+
 ## 자주 쓰는 예시
 
 ### 예시 1. 폴더 바로 아래 파일만 처리
@@ -190,3 +215,20 @@ python video_preprocess_cli.py inspect ./configs/example_batch.json \
 - `fps_mode = "downsample_only"` 유지
 - 그러면 원본이 8 FPS인데 target이 10 FPS여도 억지 증간 없이 8 FPS 유지
 
+### 예시 5. 4분 50초 ~ 5분 50초 구간만 자르기
+
+```json
+"segment": {
+  "start_sec": 290.0,
+  "end_sec": 350.0,
+  "preserve_source_fps": true
+}
+```
+
+CLI 예시:
+
+```bash
+python video_preprocess_cli.py segment ./configs/example_segment.json \
+  --input-path '/share_ssd/ltb/Users/ltb/박스_추론용_샘플영상들/260429_서초서리풀_영건님이_프레임시간순서맞춘_3개_cctv영상들/cropped_1500sec' \
+  --scan-depth 0
+```

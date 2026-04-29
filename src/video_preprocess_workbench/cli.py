@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 from .config import create_example_config, load_config
-from .pipeline import apply_overrides, inspect_inputs, run_batch, save_preview
+from .pipeline import apply_overrides, inspect_inputs, run_batch, run_segment_batch, save_preview
 
 
 def _common_override_args(parser: argparse.ArgumentParser) -> None:
@@ -46,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="video-preprocess-lab",
         description=(
-            "영상 폴더 또는 단일 파일을 대상으로 메타데이터 검사, preview, 배치 전처리를 수행합니다."
+            "영상 폴더 또는 단일 파일을 대상으로 메타데이터 검사, preview, 배치 전처리, 구간 편집을 수행합니다."
         ),
         epilog=(
             "권장 순서:\n"
@@ -54,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  2) inspect 로 영상 개수/해상도/FPS 확인\n"
             "  3) preview 로 대표 프레임과 ROI 확인\n"
             "  4) run --dry-run 으로 보고서만 먼저 확인\n"
-            "  5) run 으로 실제 변환\n"
+            "  5) run 으로 실제 전처리 변환\n"
+            "  6) segment 로 원본 FPS 유지 구간 편집\n"
             "\n"
             "예시:\n"
             "  python video_preprocess_cli.py init-config ./configs/local_batch.json\n"
@@ -62,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  python video_preprocess_cli.py inspect ./configs/example_batch.json --input-path '/data/videos' --scan-depth 0\n"
             "  python video_preprocess_cli.py preview ./configs/example_batch.json --input-path '/data/videos' --scan-depth -1\n"
             "  python video_preprocess_cli.py run ./configs/example_batch.json --input-path '/data/videos' --scan-depth -1 --dry-run\n"
+            "  python video_preprocess_cli.py segment ./configs/example_segment.json --input-path '/data/videos' --scan-depth 0\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -137,6 +139,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="실제 인코딩 없이 scan/report/preview 만 수행",
     )
     _common_override_args(run_parser)
+
+    segment_parser = subparsers.add_parser(
+        "segment",
+        help="원본 FPS 유지 구간 편집 실행",
+        description=(
+            "영상별 원본 FPS를 유지한 채 지정한 초 구간만 잘라서 저장합니다.\n"
+            "예: 290초~350초 구간만 3개 CCTV에서 각각 추출"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    segment_parser.add_argument("config", help="config JSON 경로")
+    segment_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="앞에서 N개만 실행. 샘플 점검 용도",
+    )
+    segment_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="실제 구간 편집 없이 inventory/summary 만 생성",
+    )
+    _common_override_args(segment_parser)
     return parser
 
 
@@ -192,6 +217,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         result = run_batch(cfg, limit=args.limit, dry_run=args.dry_run)
         print("# run summary")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "segment":
+        result = run_segment_batch(cfg, limit=args.limit, dry_run=args.dry_run)
+        print("# segment summary")
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
 

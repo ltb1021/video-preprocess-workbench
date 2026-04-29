@@ -198,6 +198,14 @@ def validate_transform(cfg: AppConfig) -> None:
         raise ValueError("crop 값 때문에 최종 해상도가 0 이하가 됩니다.")
 
 
+def validate_segment(cfg: AppConfig) -> None:
+    segment = cfg.segment
+    if segment.start_sec < 0:
+        raise ValueError("segment.start_sec 는 0 이상이어야 합니다.")
+    if segment.end_sec <= segment.start_sec:
+        raise ValueError("segment.end_sec 는 start_sec 보다 커야 합니다.")
+
+
 def transform_frame(frame: np.ndarray, cfg: AppConfig) -> np.ndarray:
     transform = cfg.transform
     target_w = transform.resize_width
@@ -394,6 +402,22 @@ def build_output_path(source_path: Path, input_root: Path, run_dir: Path, cfg: A
     return output_dir / f"{stem}__preprocessed.{suffix}"
 
 
+def build_segment_output_path(source_path: Path, input_root: Path, run_dir: Path, cfg: AppConfig) -> Path:
+    segments_root = ensure_dir(run_dir / "segments")
+    suffix = cfg.output.output_ext.lstrip(".")
+    if cfg.input.mode == "file":
+        relative_parent = Path()
+        stem = source_path.stem
+    else:
+        relative = source_path.relative_to(input_root)
+        relative_parent = relative.parent if cfg.output.preserve_subdirs else Path()
+        stem = relative.stem
+    output_dir = ensure_dir(segments_root / relative_parent)
+    start_text = int(cfg.segment.start_sec) if cfg.segment.start_sec.is_integer() else cfg.segment.start_sec
+    end_text = int(cfg.segment.end_sec) if cfg.segment.end_sec.is_integer() else cfg.segment.end_sec
+    return output_dir / f"{stem}__segment_{start_text}-{end_text}s.{suffix}"
+
+
 def process_video(source_path: Path, input_root: Path, run_dir: Path, cfg: AppConfig) -> dict[str, Any]:
     cap = cv2.VideoCapture(str(source_path))
     writer = None
@@ -477,6 +501,87 @@ def process_video(source_path: Path, input_root: Path, run_dir: Path, cfg: AppCo
             writer.release()
 
 
+def segment_video(source_path: Path, input_root: Path, run_dir: Path, cfg: AppConfig) -> dict[str, Any]:
+    cap = cv2.VideoCapture(str(source_path))
+    writer = None
+    result: dict[str, Any] = {
+        "source_path": str(source_path),
+        "relative_path": str(source_path.relative_to(input_root)) if source_path != input_root else source_path.name,
+        "status": "failed",
+        "error": "",
+        "src_width": 0,
+        "src_height": 0,
+        "src_fps": 0.0,
+        "src_frame_count": 0,
+        "duration_sec": 0.0,
+        "start_sec": cfg.segment.start_sec,
+        "end_sec": cfg.segment.end_sec,
+        "start_frame": 0,
+        "end_frame": 0,
+        "dst_path": "",
+        "dst_fps": 0.0,
+        "written_frames": 0,
+    }
+    try:
+        if not cap.isOpened():
+            raise IOError("VideoCapture open failed")
+        result["src_width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        result["src_height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        result["src_fps"] = float(cap.get(cv2.CAP_PROP_FPS)) or 0.0
+        result["src_frame_count"] = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if result["src_fps"] <= 0:
+            raise ValueError("원본 FPS를 읽을 수 없습니다.")
+        result["duration_sec"] = result["src_frame_count"] / result["src_fps"]
+
+        if cfg.segment.end_sec > result["duration_sec"]:
+            raise ValueError(
+                f"요청 end_sec({cfg.segment.end_sec})가 영상 길이({result['duration_sec']:.3f}초)를 초과합니다."
+            )
+
+        result["start_frame"] = int(round(cfg.segment.start_sec * result["src_fps"]))
+        result["end_frame"] = int(round(cfg.segment.end_sec * result["src_fps"]))
+        if result["end_frame"] <= result["start_frame"]:
+            raise ValueError("계산된 segment frame 범위가 비어 있습니다.")
+
+        effective_fps = result["src_fps"] if cfg.segment.preserve_source_fps else result["src_fps"]
+        result["dst_fps"] = round(effective_fps, 6)
+        output_path = build_segment_output_path(source_path, input_root, run_dir, cfg)
+        writer = cv2.VideoWriter(
+            str(output_path),
+            fourcc_for_ext(cfg.output.output_ext),
+            effective_fps,
+            (result["src_width"], result["src_height"]),
+        )
+        if not writer.isOpened():
+            raise IOError(f"VideoWriter open failed: {output_path}")
+        result["dst_path"] = str(output_path)
+
+        cap.set(cv2.CAP_PROP_POS_FRAMES, result["start_frame"])
+        current = result["start_frame"]
+        while current < result["end_frame"]:
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                break
+            writer.write(frame)
+            result["written_frames"] += 1
+            if result["written_frames"] % cfg.run.log_every == 0:
+                print(f"[{source_path.name}] written_frames={result['written_frames']}")
+            current += 1
+
+        if result["written_frames"] <= 0:
+            raise RuntimeError("출력 프레임이 0개입니다.")
+
+        result["status"] = "ok"
+        return result
+    except Exception as exc:  # noqa: BLE001
+        result["error"] = str(exc)
+        return result
+    finally:
+        cap.release()
+        if writer is not None:
+            writer.release()
+
+
 def run_batch(
     cfg: AppConfig,
     limit: int | None = None,
@@ -530,3 +635,63 @@ def run_batch(
     write_json(reports_dir / "run_summary.json", summary)
     return summary
 
+
+def run_segment_batch(
+    cfg: AppConfig,
+    limit: int | None = None,
+    dry_run: bool = False,
+    run_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    validate_segment(cfg)
+    prepared_run_dir = Path(run_dir) if run_dir else resolve_run_dir(cfg)
+    inspection = inspect_inputs(cfg, limit=limit, run_dir=prepared_run_dir)
+    video_paths, input_root = collect_video_paths(cfg)
+    if limit is not None:
+        video_paths = video_paths[:limit]
+
+    reports_dir = ensure_dir(prepared_run_dir / "reports")
+    if dry_run:
+        summary = {
+            "run_dir": str(prepared_run_dir),
+            "dry_run": True,
+            "planned_files": len(video_paths),
+            "segment": {
+                "start_sec": cfg.segment.start_sec,
+                "end_sec": cfg.segment.end_sec,
+                "preserve_source_fps": cfg.segment.preserve_source_fps,
+            },
+            "inventory_summary": inspection["summary"],
+        }
+        write_json(reports_dir / "segment_summary.json", summary)
+        return summary
+
+    success_rows: list[dict[str, Any]] = []
+    failed_rows: list[dict[str, Any]] = []
+    for path in video_paths:
+        row = segment_video(path, input_root, prepared_run_dir, cfg)
+        if row["status"] == "ok":
+            success_rows.append(row)
+        else:
+            failed_rows.append(row)
+            print(f"[WARN] failed: {path} -> {row['error']}")
+            if not cfg.run.continue_on_error:
+                break
+
+    write_csv(reports_dir / "segment_success.csv", success_rows)
+    write_csv(reports_dir / "segment_failed.csv", failed_rows)
+    summary = {
+        "run_dir": str(prepared_run_dir),
+        "dry_run": False,
+        "requested_files": len(video_paths),
+        "success_count": len(success_rows),
+        "failed_count": len(failed_rows),
+        "segment": {
+            "start_sec": cfg.segment.start_sec,
+            "end_sec": cfg.segment.end_sec,
+            "preserve_source_fps": cfg.segment.preserve_source_fps,
+        },
+        "inventory_summary": inspection["summary"],
+        "config": asdict(cfg),
+    }
+    write_json(reports_dir / "segment_summary.json", summary)
+    return summary

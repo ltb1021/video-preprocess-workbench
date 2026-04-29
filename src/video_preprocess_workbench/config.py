@@ -152,6 +152,21 @@ class RunConfig:
 
 
 @dataclass
+class SegmentConfig:
+    start_sec: float = 290.0
+    end_sec: float = 350.0
+    preserve_source_fps: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SegmentConfig":
+        return cls(
+            start_sec=float(data.get("start_sec", 290.0)),
+            end_sec=float(data.get("end_sec", 350.0)),
+            preserve_source_fps=bool(data.get("preserve_source_fps", True)),
+        )
+
+
+@dataclass
 class AppConfig:
     input: InputConfig = field(default_factory=InputConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -159,6 +174,7 @@ class AppConfig:
     roi: RoiConfig = field(default_factory=RoiConfig)
     preview: PreviewConfig = field(default_factory=PreviewConfig)
     run: RunConfig = field(default_factory=RunConfig)
+    segment: SegmentConfig = field(default_factory=SegmentConfig)
     config_path: str = ""
 
     @classmethod
@@ -170,6 +186,7 @@ class AppConfig:
             roi=RoiConfig.from_dict(data.get("roi", {})),
             preview=PreviewConfig.from_dict(data.get("preview", {})),
             run=RunConfig.from_dict(data.get("run", {})),
+            segment=SegmentConfig.from_dict(data.get("segment", {})),
             config_path=config_path,
         )
 

@@ -1,0 +1,55 @@
+{
+  "input": {
+    "path": "../input_videos",
+    "mode": "dir",
+    "scan_depth": 0,
+    "extensions": [
+      ".mp4",
+      ".avi",
+      ".mov",
+      ".mkv"
+    ]
+  },
+  "output": {
+    "base_dir": "../artifacts/runs",
+    "run_name": "auto",
+    "output_ext": "mp4",
+    "preserve_subdirs": true
+  },
+  "transform": {
+    "resize_mode": "fit_pad",
+    "resize_width": 1280,
+    "resize_height": 720,
+    "crop_top": 0,
+    "crop_bottom": 0,
+    "crop_left": 0,
+    "crop_right": 0,
+    "target_fps": 10.0,
+    "fps_mode": "downsample_only",
+    "preserve_duration": true
+  },
+  "roi": {
+    "enabled": false,
+    "space": "normalized",
+    "boxes": [],
+    "blur_kernel": [
+      151,
+      151
+    ]
+  },
+  "preview": {
+    "enabled": false,
+    "video_index": 0,
+    "debug_frame_index": 0,
+    "grid_interval": 50
+  },
+  "run": {
+    "continue_on_error": true,
+    "log_every": 200
+  },
+  "segment": {
+    "start_sec": 290.0,
+    "end_sec": 350.0,
+    "preserve_source_fps": true
+  }
+}
